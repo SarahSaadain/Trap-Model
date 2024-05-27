@@ -1,0 +1,84 @@
+---
+title: "CreateBedfiles"
+output: html_document
+author: "Sarah Saadain"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(ggpubr)
+```
+
+```{r}
+# Visualisation
+directory <- "/Users/ssaadain/Documents/Trap_Model/gtf_files/"
+
+# Get a list of files in the directory
+files <- list.files(directory, full.names = TRUE)
+
+# Loop through each file
+for (file in files) {
+  # Extract the basename of the file
+  basename <- basename(file)
+  # Read the file
+  single_output <- read_table(file, col_names = FALSE) %>%
+    select(c(1,13,14,3,23,16)) # this is in the right order of a .bed file, V3 I only used as placeholder 
+  write_tsv(single_output, paste0(directory, basename, ".bed"), col_names =FALSE)
+}
+```
+
+```{r}
+# three species have different columns in the .gtf file, needs readujustment:
+directory2 <- "/Users/ssaadain/Documents/Trap_Model/gtf_files/exception/"
+exceptions <- list.files(directory2, full.names = TRUE)
+
+# Loop through each file
+for (file in exceptions) {
+  # Extract the basename of the file
+  basename <- basename(file)
+  # Read the file
+  single_output <- read_table(file, col_names = FALSE) %>%
+    select(c(1,14,15,3,24,17)) # this is in the right order of a .bed file, V3 I only used as placeholder 
+  write_tsv(single_output, paste0(directory, basename, ".bed"), col_names =FALSE)
+}
+```
+
+```{r}
+# suziki has different columns in the .gtf file, needs readujustment:
+#directly with absolute path
+data <- read.table("/Users/ssaadain/Documents/Trap_Model/gtf_files/exception2/Dsuz_SRR23592998.gtf", sep = "\t", fill = TRUE)
+data <- data[,c(1,4,5,7,9)]
+data$Species <- "suzukii"
+data$V1 <- substr(data$V1, 1, 14)
+data$V9 <- sub("^.*directionality: (.*?);.*", "\\1", data$V9)
+
+# Set the directory
+directory_Dsuz <- "/Users/ssaadain/Documents/Trap_Model/gtf_files/exception2/"
+exception2 <- list.files(directory_Dsuz, full.names = TRUE)
+
+# Loop through each file
+for (file in exception2) {
+  print(paste("Processing file:", file))
+  # Read the file
+  data <- read.table(file, sep = "\t", fill = TRUE)
+  # Keep only the necessary columns
+  data <- data[, c(1, 4, 5, 7, 9)]
+  # Add Species column
+  data$Species <- "suzukii"
+  # Shorten V1 column
+  data$V1 <- substr(data$V1, 1, 14)
+  # Extract directionality from V9
+  data$V9 <- sub("^.*directionality: (.*?);.*", "\\1", data$V9)
+  # Print out some information about the processed data
+  print(head(data))
+  # Write the processed data to a new file with the desired name
+  output_file <- paste0(tools::file_path_sans_ext(file), ".bed")
+  write.table(data, output_file,
+              col.names = FALSE, row.names = FALSE, sep = "\t")
+  print(paste("File processed:", output_file))
+}
+```

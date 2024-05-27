@@ -1,5 +1,5 @@
 ---
-title: "Clusters"
+title: "DifferentiateClusters"
 output: github_document
 author: "Sarah Saadain"
 ---

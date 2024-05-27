@@ -1,0 +1,161 @@
+---
+title: "Invade"
+output: html_document
+author: "Sarah Saadain"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(ggpubr)
+```
+
+
+```{r}
+setwd("/Users/ssaadain/invasions/")
+
+#columns_to_remove <- c(5, 12, 15, 19, 24, 27)
+
+names=c("rep", "gen", "popstat", "fmale", "random1", "fwte", "avw", "minw", "avtes", "avpopfreq", "fixed",
+         "random2", "phase", "fwpirna", "random3", "fwcli", "avcli", "fixcli", "random4", "fwpar_yespi",
+         "fwpar_nopi", "avpar","fixpar", "random5", "piori","orifreq","random6")
+
+Dana <- read_tsv("Dana_cut.txt", col_names = names) %>% mutate(Species="Dana") %>% select(Species, avtes)
+Dazt <- read_tsv("Dazt_cut.txt", col_names = names) %>% mutate(Species="Dazt") %>% select(Species, avtes)
+Dbia <- read_tsv("Dbia_cut.txt", col_names = names) %>% mutate(Species="Dbia") %>% select(Species, avtes)
+Dere <- read_tsv("Dere_cut.txt", col_names = names) %>% mutate(Species="Dere") %>% select(Species, avtes)
+Dfic <- read_tsv("Dfic_cut.txt", col_names = names) %>% mutate(Species="Dfic") %>% select(Species, avtes)
+Dmel <- read_tsv("Dmel_cut.txt", col_names = names) %>% mutate(Species="Dmel") %>% select(Species, avtes)
+Dmoj <- read_tsv("Dmoj_cut.txt", col_names = names) %>% mutate(Species="Dmoj") %>% select(Species, avtes)
+Dper <- read_tsv("Dper_cut.txt", col_names = names) %>% mutate(Species="Dper") %>% select(Species, avtes)
+Dpse <- read_tsv("Dpse_cut.txt", col_names = names) %>% mutate(Species="Dpse") %>% select(Species, avtes)
+Dsim <- read_tsv("Dsim_cut.txt", col_names = names) %>% mutate(Species="Dsim") %>% select(Species, avtes)
+Dsub <- read_tsv("Dsub_cut.txt", col_names = names) %>% mutate(Species="Dsub") %>% select(Species, avtes)
+Dsuz <- read_tsv("Dsuz_cut.txt", col_names = names) %>% mutate(Species="Dsuz") %>% select(Species, avtes)
+Dtak <- read_tsv("Dtak_cut.txt", col_names = names) %>% mutate(Species="Dtak") %>% select(Species, avtes)
+Dvir <- read_tsv("Dvir_cut.txt", col_names = names) %>% mutate(Species="Dvir") %>% select(Species, avtes)
+Dyak <- read_tsv("Dyak_cut.txt", col_names = names) %>% mutate(Species="Dyak") %>% select(Species, avtes)
+
+all_sim <- bind_rows(Dana, Dazt, Dbia, Dere, Dfic, Dmel, Dmoj, Dper, Dpse, Dsim, Dsub, Dsuz, Dtak, Dvir, Dyak)
+
+#get the right names for plotting
+all_sim <- all_sim %>%
+  mutate(
+    Abbreviation = Species,  # Store original species names
+    Species = case_when(
+      Species == "Dana" ~ "D. ananassae",
+      Species == "Dazt" ~ "D. azteca",
+      Species == "Dsim" ~ "D. simulans",
+      Species == "Dsuz" ~ "D. suzukii",
+      Species == "Dsub" ~ "D. subobscura",
+      Species == "Dpse" ~ "D. pseudoobscura",
+      Species == "Dmel" ~ "D. melanogaster",
+      Species == "Dper" ~ "D. persimilis",
+      Species == "Dmoj" ~ "D. mojavensis",
+      Species == "Dere" ~ "D. erecta",
+      Species == "Dbia" ~ "D. biarmipes", 
+      Species == "Dvir" ~ "D. virilis",
+      Species == "Dtak" ~ "D. takahashii",
+      Species == "Dfic" ~ "D. ficusphila",
+      Species == "Dyak" ~ "D. yakuba",
+      TRUE ~ Species  # Keep the original species name if no condition is met
+    )
+  )
+```
+
+```{r}
+#get clustersizes
+setwd("/Users/ssaadain/Documents/Trap_Model")
+
+proTRAC_output <- read.table("predicted_clusters_pdens0.2.txt", header=TRUE, sep="\t") %>% 
+  separate(SRRnumber, into = c("Species", "SRR"), sep="_") %>%
+  mutate(Cluster_percent = gsub("%", "", Cluster_.)) %>%
+  select(-Cluster_.) %>%  # Drop the original Cluster_ column
+  type_convert()
+
+#### gets the mean_Clustersize per species (for those were I have multiple samples)
+proTRAC_mean <- proTRAC_output %>%
+  group_by(Species) %>%
+  summarise(mean_Cluster=mean(Cluster_percent))
+
+# get the right names for plotting
+proTRAC_mean <- proTRAC_mean %>%
+  mutate(
+      Species = case_when(
+      Species == "Dana" ~ "D. ananassae",
+      Species == "Dazt" ~ "D. azteca",
+      Species == "Dsim" ~ "D. simulans",
+      Species == "Dsuz" ~ "D. suzukii",
+      Species == "Dsub" ~ "D. subobscura",
+      Species == "Dpse" ~ "D. pseudoobscura",
+      Species == "Dmel" ~ "D. melanogaster",
+      Species == "Dper" ~ "D. persimilis",
+      Species == "Dmoj" ~ "D. mojavensis",
+      Species == "Dere" ~ "D. erecta",
+      Species == "Dbia" ~ "D. biarmipes", 
+      Species == "Dvir" ~ "D. virilis",
+      Species == "Dtak" ~ "D. takahashii",
+      Species == "Dfic" ~ "D. ficusphila",
+      Species == "Dyak" ~ "D. yakuba",
+      TRUE ~ Species  # Keep the original species name if no condition is met
+    )
+  )
+
+#
+merged_sim <- inner_join(all_sim, proTRAC_mean, by = "Species")
+
+# colors
+custom_colors <- c(
+  "D. ananassae" = "#0000FF",
+  "D. azteca" = "#33a02c",
+  "D. biarmipes" = "#e31a1c",
+  "D. melanogaster" = "#ff7f00",
+  "D. suzukii" = "#6a3d9a",
+  "D. takahashii" = "#b15928",
+  "D. mojavensis" = "#40E0D0",
+  "D. erecta" = "#808080",
+  "D. virilis" = "#cab2d6",
+  "D. subobscura" = "#FFD700",
+  "D. simulans" = "#000000",
+  "D. pseudoobscura" = "#b2df8a",
+  "D. persimilis" = "#ff00ff",
+  "D. yakuba" = "#fb9a99",
+  "D. willistoni" = "cyan",
+  "D. ficusphila" = "mediumorchid"
+)
+
+#
+cor_result <- cor.test(merged_sim$avtes, merged_sim$mean_Cluster)
+
+# Determine the significance level
+if (cor_result$p.value < 0.001) {
+  p_value_text <- "< 0.001"
+} else {
+  p_value_text <- sprintf("%.3f", cor_result$p.value)
+}
+```
+
+```{r}
+# Visualisation
+correlation_sim <- ggplot(merged_sim, aes(x = mean_Cluster, y = avtes, color = Species)) +
+  geom_point(size = 2) +
+  geom_smooth(aes(group = 1), method = "lm", se = FALSE, size = 0.5, show.legend = "full") +
+  scale_color_manual(values = custom_colors, name = "") +  
+  labs(y = "Counts of TE", x = "Mean clustersize in %") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0),
+    legend.position = "right",
+    legend.text = element_text(size=10, face = "italic")
+  ) +
+  geom_text(aes(x = Inf, y = Inf, label = paste("Correlation coefficient: ", round(cor_result$estimate, 2), "\n", "p-value: ", p_value_text)), 
+            hjust = 1.05, vjust = 1.05, size = 3, color = "#808080")
+
+print(correlation_sim)
+ggsave("Fig1b.png", correlation_sim, width = 8, height = 5, dpi = 300)
+
+```

@@ -1,0 +1,248 @@
+---
+title: "ClustersizeVsTEs"
+output: html_document
+date: "2024-05-27"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(ggpubr)
+library(patchwork)
+library(cowplot)
+````
+
+```{r}
+setwd("/Users/ssaadain/Documents/Trap_Model")
+
+proTRAC_output <- read.table("predicted_clusters_pdens0.2.txt", header=TRUE, sep="\t") %>% 
+  separate(SRRnumber, into = c("Species", "SRR"), sep="_") %>%
+  mutate(Cluster_percent = gsub("%", "", Cluster_.)) %>%
+  select(-Cluster_.) %>%  # Drop the original Cluster_ column
+  type_convert()
+
+proTRAC_output <- proTRAC_output %>%
+  mutate(
+    Abbreviation = Species,  # Store original species names
+    Species = case_when(
+      Species == "Dana" ~ "D. ananassae",
+      Species == "Dazt" ~ "D. azteca",
+      Species == "Dsim" ~ "D. simulans",
+      Species == "Dsuz" ~ "D. suzukii",
+      Species == "Dsub" ~ "D. subobscura",
+      Species == "Dpse" ~ "D. pseudoobscura",
+      Species == "Dmel" ~ "D. melanogaster",
+      Species == "Dper" ~ "D. persimilis",
+      Species == "Dmoj" ~ "D. mojavensis",
+      Species == "Dere" ~ "D. erecta",
+      Species == "Dbia" ~ "D. biarmipes", 
+      Species == "Dvir" ~ "D. virilis",
+      Species == "Dtak" ~ "D. takahashii",
+      Species == "Dfic" ~ "D. ficusphila",
+      Species == "Dyak" ~ "D. yakuba",
+      TRUE ~ Species  # Keep the original species name if no condition is met
+    )
+  )
+```
+
+```{r}
+ClusterSizePerSpecies <- ggplot(proTRAC_output, aes(x = reorder(Species, Cluster_percent), y = Cluster_percent)) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(y = "Cluster %", x = "") +
+  scale_x_discrete(labels = c("D. azteca", "D. ananassae", "D. suzukii", "D. subobscura", "D. simulans", "D. pseudoobscura", "D. melanogaster", "D. persimilis", "D. mojavensis", "D. erecta", "D. biarmipes", "D. virilis", "D. takahashii", "D. ficusphila", "D. yakuba")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, face = "italic", size = 8, lineheight = 0.8))
+
+ggsave("ClustersizePerSpecies.png", ClusterSizePerSpecies, width = 6, height = 4, dpi = 300)
+```
+
+```{r}
+RM_output <- read.table("RM/merged.clean.sum", col.names = c("rm","SW","div","contig","qstart","qend","strand","te","rstart","rend","score","Abbreviation"))
+RM_output$Abbreviation <- substr(RM_output$Abbreviation, 1, 4) # splits the long name into the species
+
+species_lookup <- data.frame(Abbreviation = c("Dana", "Dazt", "Dsim", "Dsuz", "Dsub", "Dpse", "Dmel", "Dper", "Dmoj", "Dere", "Dbia", "Dvir", "Dtak", "Dfic", "Dyak"),
+                             Species = c("D. ananassae", "D. azteca", "D. simulans", "D. suzukii", "D. subobscura", "D. pseudoobscura", "D. melanogaster", "D. persimilis", "D. mojavensis", "D. erecta", "D. biarmipes", "D. virilis", "D. takahashii", "D. ficusphila", "D. yakuba"))
+
+RM_output <- RM_output %>%
+  left_join(species_lookup, by = c("Abbreviation" = "Abbreviation"))
+
+RMfilter <- RM_output %>%
+  mutate(length=qend-qstart) %>%
+  filter(length>1000) %>% # keep everything that is longer than 1000 bps
+  group_by(Species,te) %>%
+  summarise(mean_div=mean(div),count=n()) # counts hits of each group
+
+RM_families <- RMfilter %>%
+  arrange(mean_div) %>%
+  filter(count>4) # we just decided that they have to be present at least 4 times
+
+RM_5_most_div <- RM_families %>%   # find the 5 most min div for each species
+  group_by(Species) %>%
+  slice_min(order_by = mean_div, n=5) %>%
+  ungroup()
+
+#### gets the mean_Clustersize per species (for those were I have multiple samples)
+proTRAC_mean <- proTRAC_output %>%
+  group_by(Species) %>%
+  summarise(mean_Cluster=mean(Cluster_percent))
+
+merged_data <- merge(RM_5_most_div, proTRAC_mean, by = "Species")
+```
+
+```{r}
+unique_species <- unique(merged_data$Species)
+
+custom_colors <- c(
+  "D. ananassae" = "#0000FF",
+  "D. azteca" = "#33a02c",
+  "D. biarmipes" = "#e31a1c",
+  "D. melanogaster" = "#ff7f00",
+  "D. suzukii" = "#6a3d9a",
+  "D. takahashii" = "#b15928",
+  "D. mojavensis" = "#40E0D0",
+  "D. erecta" = "#808080",
+  "D. virilis" = "#cab2d6",
+  "D. subobscura" = "#FFD700",
+  "D. simulans" = "#000000",
+  "D. pseudoobscura" = "#b2df8a",
+  "D. persimilis" = "#ff00ff",
+  "D. yakuba" = "#fb9a99",
+  "D. willistoni" = "cyan",
+  "D. ficusphila" = "mediumorchid"
+)
+
+correlation_different_displayed <- ggplot(merged_data, aes(x = mean_Cluster, y = count, color = reorder(Species, mean_Cluster))) +
+  geom_point(size = 2) +
+  geom_smooth(aes(group = 1, color = reorder(Species, mean_Cluster)), method = "lm", se = FALSE, linewidth = 0.5, show.legend = "full") +
+  scale_color_manual(values = custom_colors, name = "") +  
+  theme_bw() +
+  labs(y = "Counts of TE", x = "Mean clustersize in %") +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0),
+    legend.position = "right",
+    legend.text = element_text(size = 10, face = "italic")  # Set face to "italic" for legend text
+  )
+
+ggsave("correlation_different_displayed.png", correlation_different_displayed, width = 8, height = 5, dpi = 300)
+```
+
+```{r}
+# correlation:
+cor_test_result <- cor.test(merged_data$count, merged_data$mean_Cluster)
+
+if (cor_test_result$p.value < 0.001) {
+  p_value_text <- "< 0.001"
+} else {
+  p_value_text <- sprintf("%.3f", cor_test_result$p.value)
+}
+```
+
+```{r}
+#### extract TE_Class info
+TE_info <- read.table("filtered/merged_TEs.txt", sep = '\t', header = FALSE, col.names = c("Species_TE", "TE_class", "TE_family"))
+TE_info <- TE_info %>%
+  mutate(Abbreviation = substr(Species_TE, 1, 4))
+TE_info <- merge(TE_info, proTRAC_output[c("Abbreviation", "Species")], by = "Abbreviation", all.x = TRUE)
+
+TE_info <- TE_info %>%
+  mutate(TE_class = ifelse(TE_class == "RC", "DNA", TE_class))
+
+RM_families_compatible <- RM_families %>%
+  left_join(species_lookup, by = c("Species" = "Species"))
+RM_families_compatible <- RM_families_compatible %>%
+  mutate(Species_TE = paste(Abbreviation, te, sep = "_"))
+RM_families_compatible <- RM_families_compatible %>%
+  select(-te)
+
+merge <- left_join(RM_families_compatible, TE_info, by = "Species_TE")
+merge <- merge %>%
+  select(Abbreviation.x, Species_TE, TE_class, TE_family, Species.x, mean_div, count)
+colnames(merge) <- c("Abbreviation", "Species_TE", "TE_class", "TE_family", "Species", "mean_div", "count")
+merge <- distinct(merge)
+```
+
+```{r}
+## for plotting the 5 most min div TE_Classes for each species
+RM_combine_5_most_div <- merge %>%   # find the 5 most min div TE_Classes for each species
+  group_by(Species, TE_class) %>%
+  slice_min(order_by = mean_div, n=5) %>%
+  ungroup()
+
+merge_TE_family_data <- merge(RM_combine_5_most_div, proTRAC_mean, by = "Species") # adds the mean piRNA cluster size to each species
+
+filtered_TE_class <- merge_TE_family_data %>%
+  filter(!(TE_class %in% c("Satellite", "Unknown","DNA?", "SINE")))
+
+```
+
+```{r}
+# Sort the levels of the Species variable based on the mean_Cluster variable
+filtered_TE_class <- filtered_TE_class %>%
+  mutate(Species = factor(Species, levels = unique(Species[order(mean_Cluster)])))
+
+# Sort the data frame by mean_Cluster
+sorted_data <- filtered_TE_class[order(filtered_TE_class$mean_Cluster), ]
+
+# Extract unique species in the sorted order
+species_order <- unique(sorted_data$Species)
+
+## prep for bind_rows of merged_data and filtred_TE_class
+merged_data <- merged_data %>%
+  mutate(te = paste0(substr(Species, 1, 1), substr(Species, 4, 6), "_", te))
+merged_data <- merged_data %>%
+  mutate(TE_class = "all")
+merged_data <- merged_data %>%
+  rename(Species_TE = te)
+remove_columns <- c(2, 5)
+filtered_TE_class <- filtered_TE_class[, -remove_columns]
+
+plots <- bind_rows(merged_data,filtered_TE_class)
+##
+
+correlation_class <- ggplot(plots, aes(x = mean_Cluster, y = count, color = Species)) +
+  geom_point(size = 2) +
+  geom_smooth(aes(group = 1, color = reorder(Species, mean_Cluster)), method = "lm", se = FALSE, size = 0.5, show.legend = "full") +
+  scale_color_manual(values = custom_colors, name = "", limits = species_order) +  # Specify the order
+  theme_bw() +
+  facet_wrap(~TE_class, ncol = 2, scale = "free_y") + 
+  labs(y = "Counts", x = "Mean clustersize in %") +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0),
+    legend.position = "bottom",
+    legend.text = element_text(size = 10, face = "italic"),
+    legend.key.height = unit(0.6, "cm"),  
+    legend.spacing.x = unit(0.1, "cm"),
+    legend.key.width = unit(0.6, "cm"),
+    legend.margin = margin(l = -10) 
+  ) +
+  guides(color = guide_legend(nrow = 2))  # Adjust the number of legend columns
+
+ggsave("Fig2.png", correlation_class, width = 12, height = 8, dpi = 300)
+
+### with correlation
+# Run correlation test
+cor_test_result <- cor.test(merged_data$count, merged_data$mean_Cluster)
+
+# Create plot
+correlation_class <- ggplot(plots, aes(x = mean_Cluster, y = count, color = Species)) +
+  geom_point(size = 2) +
+  geom_smooth(aes(group = 1, color = reorder(Species, mean_Cluster)), method = "lm", se = FALSE, size = 0.5, show.legend = "full") +
+  scale_color_manual(values = custom_colors, name = "", limits = species_order) +  # Specify the order
+  theme_bw() +
+  facet_wrap(~TE_class, ncol = 2, scale = "free_y") + 
+  labs(y = "Counts", x = "Mean clustersize in %") +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0),
+    legend.position = "bottom",
+    legend.text = element_text(size = 10, face = "italic"),
+    legend.key.height = unit(0.6, "cm"),  
+    legend.spacing.x = unit(0.1, "cm"),
+    legend.key.width = unit(0.6, "cm"),
+    legend.margin = margin(l = -10) 
+  ) +
+  guides(color = guide_legend(nrow = 2)) +  # Adjust the number of legend columns
+  geom_text(aes(label = paste("p-value:", signif(cor_test_result$p.value, digits = 2))), x = Inf, y = -Inf, hjust = 1, vjust = 1, size = 4, color = "black", fontface = "italic")
+```

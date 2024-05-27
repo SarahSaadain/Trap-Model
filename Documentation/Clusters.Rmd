@@ -1,0 +1,134 @@
+---
+title: "Clusters"
+output: github_document
+author: "Sarah Saadain"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(ggpubr)
+library(ggplot2)
+```
+
+```{r}
+setwd("/Users/ssaadain/Documents/Trap_Model/Clusters/")
+
+coverage_all <- read_tsv("coverage_all.tsv", col_names = FALSE)
+```
+
+```{r}
+colnames(coverage_all) <- c("Home", "Path", "Chromo", "Start", "End", "Coverage")
+
+coverage_all <- coverage_all %>% 
+  mutate(Path = basename(Path)) %>% 
+  separate(Path, into = c("Species", "Tissue", "SRR"), sep = "_") %>% 
+  select(-Home) %>%
+  mutate(Tissue=ifelse(Tissue=="ovaries", Tissue, "FC")) %>%
+  group_by(Species, Tissue, Chromo, Start, End) %>%
+  summarise(Coverage=mean(Coverage)) %>%
+  pivot_wider(names_from = Tissue, values_from = Coverage) %>%
+  mutate(Ratio=ovaries/FC) %>%
+  filter(Species != "Dazt" & Species != "Dsub" & Species != "Dsuz") %>% #Dazt, Dsub and Dsuz have no FC data
+  mutate(length= End-Start)
+
+coverage_all <- coverage_all %>%
+  mutate(
+    Abbreviation = Species,  # Store original species names
+    Species = case_when(
+      Species == "Dana" ~ "D. ananassae",
+      Species == "Dazt" ~ "D. azteca",
+      Species == "Dsim" ~ "D. simulans",
+      Species == "Dsuz" ~ "D. suzukii",
+      Species == "Dsub" ~ "D. subobscura",
+      Species == "Dpse" ~ "D. pseudoobscura",
+      Species == "Dmel" ~ "D. melanogaster",
+      Species == "Dper" ~ "D. persimilis",
+      Species == "Dmoj" ~ "D. mojavensis",
+      Species == "Dere" ~ "D. erecta",
+      Species == "Dbia" ~ "D. biarmipes", 
+      Species == "Dvir" ~ "D. virilis",
+      Species == "Dtak" ~ "D. takahashii",
+      Species == "Dfic" ~ "D. ficusphila",
+      Species == "Dyak" ~ "D. yakuba",
+      TRUE ~ Species  # Keep the original species name if no condition is met
+    )
+  )
+````
+
+```{r}
+unique_species <- unique(coverage_all$Species)
+
+custom_colors <- c(
+  "D. ananassae" = "#0000FF",
+  "D. azteca" = "#33a02c",
+  "D. biarmipes" = "#e31a1c",
+  "D. melanogaster" = "#ff7f00",
+  "D. suzukii" = "#6a3d9a",
+  "D. takahashii" = "#b15928",
+  "D. mojavensis" = "#40E0D0",
+  "D. erecta" = "#808080",
+  "D. virilis" = "#cab2d6",
+  "D. subobscura" = "#FFD700",
+  "D. simulans" = "#000000",
+  "D. pseudoobscura" = "#b2df8a",
+  "D. persimilis" = "#ff00ff",
+  "D. yakuba" = "#fb9a99",
+  "D. willistoni" = "cyan",
+  "D. ficusphila" = "mediumorchid"
+)
+
+Clusters <- ggplot(coverage_all, aes(x = Species, y = Ratio, color = Species)) +
+  geom_point(position = position_jitter(width = 0.2, height = 0), alpha = 0.3) + 
+  scale_color_manual(values = custom_colors, name = "") +
+  labs(x = "Species", y = "coverage ovaries / coverage follicle cells") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right",
+    legend.text = element_text(size = 10, face = "italic"),
+    legend.key = element_blank(),  # Remove background color from legend
+    plot.margin = margin(t = 10, r = 10, b = 10, l = 10, unit = "pt"),  # Adjust margins
+    legend.margin = margin(0, 0, 0, 0)  # Adjust legend margin
+  ) +
+  guides(color = guide_legend(override.aes = list(alpha = 1)))
+
+ggsave("Clusters.png", Clusters, width = 10, height = 7, units = "in", dpi = 300)
+```
+
+```{r}
+create_species_scatterplot <- function(data, species) {
+  # Filter data for the specified species
+  species_data <- data %>% filter(Species == species)
+  
+  # Create scatter plot
+  scatterplot <- ggplot(species_data, aes(x = Ratio, y = length, color = Species)) +
+    geom_point(position = position_jitter(width = 0.2, height = 0), alpha = 0.7, show.legend = FALSE) +
+    scale_color_manual(values = custom_colors, name = "") +
+    labs(x = "Coverage ovaries / Coverage follicle cells", y = "Cluster Length") +
+    scale_y_continuous(labels = scales::label_number()) + # Specify the format of y-axis labels
+    theme_bw() + 
+    theme(
+      axis.text.x = element_text(hjust = 0.5, face = "plain"),  # Set face to "plain" for x-axis labels
+      axis.text.y = element_text(face = "plain"),  # Set face to "plain" for y-axis labels
+      legend.position = "top",  # Place legend at the top
+      legend.text = element_text(size = 12, face = "italic"),  # Increase legend text size
+      legend.key = element_blank(),  # Remove background color from legend
+      legend.spacing.x = unit(2, "cm")  # Increase the spacing between legend items
+    ) +
+    guides(color = guide_legend(override.aes = list(alpha = 1), title = NULL))  # Remove legend title and symbol
+  
+  return(scatterplot)
+}
+
+# Get unique species names
+species_names <- unique(coverage_all$Species)
+# Create scatter plots for each species
+scatterplots <- map(species_names, ~ create_species_scatterplot(coverage_all, .x))
+# Save scatter plots for each species
+walk2(species_names, scatterplots, ~ ggsave(paste0("scatterplot_", .x, ".png"), .y, width = 10, height = 7, units = "in", dpi = 300))
+
+```
